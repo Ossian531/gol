@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conway's Game of Life</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for the Game of Life */
+        body {
+            font-family: "Inter", sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #1a202c; /* Dark background */
+            color: #e2e8f0; /* Light text */
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        canvas {
+            background-color: #2d3748; /* Darker background for canvas */
+            border: 2px solid #4a5568; /* Border for canvas */
+            border-radius: 0.75rem; /* Rounded corners */
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); /* Subtle shadow */
+            touch-action: manipulation; /* Prevent double-tap zoom on canvas */
+        }
+        .control-button {
+            @apply px-6 py-3 m-2 rounded-lg font-semibold shadow-md transition-all duration-200 ease-in-out;
+            @apply focus:outline-none focus:ring-2 focus:ring-opacity-75;
+        }
+        .control-button.primary {
+            @apply bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500;
+        }
+        .control-button.secondary {
+            @apply bg-gray-600 text-white hover:bg-gray-700 focus:ring-gray-500;
+        }
+        .info-box {
+            @apply bg-gray-700 p-4 rounded-lg shadow-inner text-sm;
+            @apply max-w-md text-center;
+        }
+        /* Ensure canvas fits within its container and is responsive */
+        @media (max-width: 768px) {
+            .container {
+                width: 100%;
+            }
+            canvas {
+                width: 100%;
+                height: auto; /* Maintain aspect ratio */
+            }
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-gray-100 p-4">
+    <h1 class="text-4xl md:text-5xl font-bold mb-6 text-blue-400">Conway's Game of Life</h1>
+
+    <div class="container flex flex-col items-center w-full max-w-4xl">
+        <canvas id="gameCanvas" class="mb-8"></canvas>
+
+        <div class="controls flex flex-wrap justify-center gap-4 mb-8">
+            <button id="startButton" class="control-button primary">Start</button>
+            <button id="stopButton" class="control-button secondary">Stop</button>
+            <button id="resetButton" class="control-button secondary">Reset</button>
+            <button id="randomButton" class="control-button secondary">Randomize</button>
+        </div>
+
+        <div id="messageBox" class="info-box hidden mb-4"></div>
+
+        <div class="info-box">
+            <p>Click on cells to toggle their state (alive/dead).</p>
+            <p>Rules:</p>
+            <ul class="list-disc list-inside text-left mx-auto max-w-xs mt-2">
+                <li>Any live cell with fewer than two live neighbours dies (underpopulation).</li>
+                <li>Any live cell with two or three live neighbours lives on to the next generation.</li>
+                <li>Any live cell with more than three live neighbours dies (overpopulation).</li>
+                <li>Any dead cell with exactly three live neighbours becomes a live cell (reproduction).</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // JavaScript for Conway's Game of Life
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+        const resetButton = document.getElementById('resetButton');
+        const randomButton = document.getElementById('randomButton');
+        const messageBox = document.getElementById('messageBox');
+
+        // Game parameters
+        const CELL_SIZE = 10; // Size of each cell in pixels
+        let COLS;
+        let ROWS;
+        let grid;
+        let animationFrameId;
+        let isRunning = false;
+        let updateInterval = 100; // Milliseconds between generations
+        let lastUpdateTime = 0;
+
+        // Function to show a message in the custom message box
+        function showMessage(message, duration = 3000) {
+            messageBox.textContent = message;
+            messageBox.classList.remove('hidden');
+            setTimeout(() => {
+                messageBox.classList.add('hidden');
+            }, duration);
+        }
+
+        // Initialize grid dimensions based on canvas size
+        function initializeGridDimensions() {
+            // Set canvas size to be responsive and fit within typical screen sizes
+            const containerWidth = canvas.parentElement.clientWidth;
+            const maxCanvasWidth = Math.min(800, containerWidth - 40); // Max 800px, with some padding
+            const maxCanvasHeight = Math.min(600, window.innerHeight - 300); // Max 600px, leaving space for controls
+
+            canvas.width = Math.floor(maxCanvasWidth / CELL_SIZE) * CELL_SIZE;
+            canvas.height = Math.floor(maxCanvasHeight / CELL_SIZE) * CELL_SIZE;
+
+            COLS = canvas.width / CELL_SIZE;
+            ROWS = canvas.height / CELL_SIZE;
+        }
+
+        // Create a 2D array representing the grid
+        function createGrid() {
+            return new Array(COLS).fill(null).map(() => new Array(ROWS).fill(0));
+        }
+
+        // Randomly populate the grid
+        function randomizeGrid() {
+            grid = createGrid();
+            for (let i = 0; i < COLS; i++) {
+                for (let j = 0; j < ROWS; j++) {
+                    grid[i][j] = Math.random() > 0.7 ? 1 : 0; // 30% chance of being alive
+                }
+            }
+            drawGrid();
+        }
+
+        // Draw the grid on the canvas
+        function drawGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < COLS; i++) {
+                for (let j = 0; j < ROWS; j++) {
+                    ctx.beginPath();
+                    ctx.rect(i * CELL_SIZE, j * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    ctx.fillStyle = grid[i][j] === 1 ? '#63b3ed' : '#2d3748'; // Blue for alive, dark gray for dead
+                    ctx.fill();
+                    ctx.strokeStyle = '#4a5568'; // Lighter gray for grid lines
+                    ctx.stroke();
+                }
+            }
+        }
+
+        // Calculate the next generation based on Game of Life rules
+        function getNextGeneration() {
+            const nextGrid = createGrid();
+
+            for (let i = 0; i < COLS; i++) {
+                for (let j = 0; j < ROWS; j++) {
+                    const cell = grid[i][j];
+                    let liveNeighbors = 0;
+
+                    // Count live neighbors
+                    for (let x = -1; x <= 1; x++) {
+                        for (let y = -1; y <= 1; y++) {
+                            if (x === 0 && y === 0) continue; // Skip the cell itself
+
+                            const neighborX = i + x;
+                            const neighborY = j + y;
+
+                            // Check boundaries
+                            if (neighborX >= 0 && neighborX < COLS && neighborY >= 0 && neighborY < ROWS) {
+                                liveNeighbors += grid[neighborX][neighborY];
+                            }
+                        }
+                    }
+
+                    // Apply Game of Life rules
+                    if (cell === 1) { // If cell is alive
+                        if (liveNeighbors < 2 || liveNeighbors > 3) {
+                            nextGrid[i][j] = 0; // Dies (underpopulation or overpopulation)
+                        } else {
+                            nextGrid[i][j] = 1; // Lives (survival)
+                        }
+                    } else { // If cell is dead
+                        if (liveNeighbors === 3) {
+                            nextGrid[i][j] = 1; // Becomes alive (reproduction)
+                        } else {
+                            nextGrid[i][j] = 0; // Stays dead
+                        }
+                    }
+                }
+            }
+            return nextGrid;
+        }
+
+        // Animation loop
+        function animate(currentTime) {
+            if (!isRunning) return;
+
+            if (currentTime - lastUpdateTime > updateInterval) {
+                grid = getNextGeneration();
+                drawGrid();
+                lastUpdateTime = currentTime;
+            }
+            animationFrameId = requestAnimationFrame(animate);
+        }
+
+        // Event Listeners
+        startButton.addEventListener('click', () => {
+            if (!isRunning) {
+                isRunning = true;
+                showMessage("Simulation started!");
+                animationFrameId = requestAnimationFrame(animate);
+            }
+        });
+
+        stopButton.addEventListener('click', () => {
+            if (isRunning) {
+                isRunning = false;
+                cancelAnimationFrame(animationFrameId);
+                showMessage("Simulation stopped.");
+            }
+        });
+
+        resetButton.addEventListener('click', () => {
+            isRunning = false;
+            cancelAnimationFrame(animationFrameId);
+            initializeGridDimensions(); // Re-initialize dimensions on reset to adapt to potential resize
+            grid = createGrid(); // Create an empty grid
+            drawGrid();
+            showMessage("Grid reset.");
+        });
+
+        randomButton.addEventListener('click', () => {
+            isRunning = false; // Stop before randomizing
+            cancelAnimationFrame(animationFrameId);
+            randomizeGrid();
+            showMessage("Grid randomized.");
+        });
+
+        canvas.addEventListener('click', (event) => {
+            // Get mouse click coordinates relative to the canvas
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mouseX = (event.clientX - rect.left) * scaleX;
+            const mouseY = (event.clientY - rect.top) * scaleY;
+
+            // Determine which cell was clicked
+            const col = Math.floor(mouseX / CELL_SIZE);
+            const row = Math.floor(mouseY / CELL_SIZE);
+
+            // Toggle cell state
+            if (col >= 0 && col < COLS && row >= 0 && row < ROWS) {
+                grid[col][row] = grid[col][row] === 0 ? 1 : 0;
+                drawGrid(); // Redraw immediately
+            }
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const wasRunning = isRunning;
+            isRunning = false;
+            cancelAnimationFrame(animationFrameId); // Stop animation
+            initializeGridDimensions(); // Recalculate dimensions
+            // Re-initialize grid with current state if possible, or reset
+            // For simplicity, we'll reset the grid on resize.
+            grid = createGrid();
+            drawGrid();
+            if (wasRunning) {
+                showMessage("Resized and reset. Click Start to resume.");
+            } else {
+                showMessage("Resized and reset.");
+            }
+        });
+
+
+        // Initial setup
+        window.onload = function() {
+            initializeGridDimensions();
+            grid = createGrid(); // Start with an empty grid
+            drawGrid();
+            showMessage("Welcome! Click 'Randomize' or draw on the grid, then 'Start'.");
+        };
+
+    </script>
+</body>
+</html>
